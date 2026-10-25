@@ -35,7 +35,17 @@ app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && frontendOrigin && origin === frontendOrigin) {
+  const allowedOrigins = [
+    frontendOrigin,
+    "https://touristguidefrontend.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:5000",
+    "http://localhost:5500",
+    "http://localhost:8080",
+    "http://127.0.0.1:5500",
+    "http://127.0.0.1:8080",
+  ].filter(Boolean);
+  if (origin && allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -89,7 +99,7 @@ app.use("/api", managementApiRouter);
 app.use("/api", (req, res) => res.status(404).json({ error: "That API route doesn't exist." }));
 app.get("/styles.css", (req, res, next) => {
   res.sendFile(path.join(frontendPath, "styles.css"), { maxAge: isProduction ? "1h" : 0 }, (error) => {
-    if (error) next(error);
+    if (error) res.status(404).end();
   });
 });
 app.use(pagesRouter);

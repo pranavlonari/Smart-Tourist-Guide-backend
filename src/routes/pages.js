@@ -56,11 +56,23 @@ function safeImageUrl(value) {
 }
 
 async function sendPage(res, fileName, values, status = 200) {
-  let markup = await readFile(path.join(frontendPath, fileName), "utf8");
-  for (const [key, value] of Object.entries(values)) {
-    markup = markup.replaceAll(`{{${key}}}`, String(value));
+  try {
+    let markup = await readFile(path.join(frontendPath, fileName), "utf8");
+    for (const [key, value] of Object.entries(values)) {
+      markup = markup.replaceAll(`{{${key}}}`, String(value));
+    }
+    return res.status(status).type("html").send(markup);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return res.status(200).json({
+        status: "ok",
+        service: "Smart Tourist Guide System API",
+        message: "API service is active. Use /api/destinations or /api/health.",
+        frontend: process.env.FRONTEND_ORIGIN || "https://touristguidefrontend.vercel.app",
+      });
+    }
+    throw error;
   }
-  return res.status(status).type("html").send(markup);
 }
 
 function takeNotice(req) {
