@@ -414,25 +414,37 @@ router.get("/management/users", requireRoles(["system_administrator"]), async (r
   res.json({ users, roles });
 });
 
-router.get("/management/contact-messages", requireRoles(["system_administrator"]), async (req, res) => {
+router.get("/management/contact-messages", requireRoles(administrators), async (req, res) => {
   const [messages] = await pool.query(
     "SELECT id, name, email, subject, message, status, created_at AS createdAt FROM contact_messages ORDER BY created_at DESC LIMIT 500",
   );
   res.json({ messages });
 });
 
-router.post("/management/contact-messages/:id/status", requireRoles(["system_administrator"]), async (req, res) => {
+async function updateContactMessageStatus(req, res) {
   const id = isId(req.params.id);
-  const status = req.body.status === "reviewed" ? "reviewed" : req.body.status === "new" ? "new" : null;
+  const status = req.body && req.body.status === "reviewed" ? "reviewed" : req.body && req.body.status === "new" ? "new" : null;
   if (!id || !status) {
-    req.session.notice = "Choose a valid message status.";
-    return res.redirect(303, "/dashboard#messages");
+    return res.status(400).json({ error: "Choose a valid message status." });
   }
   const [result] = await pool.execute("UPDATE contact_messages SET status = ? WHERE id = ?", [status, id]);
-  if (result.affectedRows) await audit(req, "update_contact_message", "contact_message", id, { status });
-  req.session.notice = result.affectedRows ? "Contact message updated." : "We couldn't find that message.";
-  return res.redirect(303, "/dashboard#messages");
-});
+  if (!result.affectedRows) {
+    return res.status(404).json({ error: "We couldn't find that message." });
+  }
+  try {
+    await pool.execute(
+      "INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, details) VALUES (?, 'update_contact_message', 'contact_message', ?, JSON_OBJECT('status', ?))",
+      [req.session.user ? req.session.user.id : null, id, status],
+    );
+  } catch (err) {
+    console.warn("Audit log notice:", err.message);
+  }
+  return res.json({ success: true, message: `Contact message marked as ${status}.`, status });
+}
+
+router.post("/management/contact-messages/:id/status", requireRoles(administrators), updateContactMessageStatus);
+router.patch("/management/contact-messages/:id/status", requireRoles(administrators), updateContactMessageStatus);
+router.post("/contact-messages/:id/status", requireRoles(administrators), updateContactMessageStatus);
 
 router.patch("/auth/profile", requireUser, async (req, res) => {
   const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
