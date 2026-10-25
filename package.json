@@ -1,0 +1,27 @@
+{
+  "name": "roam-tourist-guide-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express and MySQL API for the Roam tourist guide",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed:demo": "node scripts/seed-demo-accounts.js",
+    "test": "node --test",
+    "check": "node --check src/server.js && node --check src/routes/api.js && node --check src/routes/management-api.js && node --check src/routes/management-pages.js && node --check src/routes/pages.js && node --check src/services/travel.js && node --check src/services/profile.js && node --check src/session-store.js && node --check src/validation.js && node --check scripts/seed-demo-accounts.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "express-session": "^1.18.2",
+    "helmet": "^8.1.0",
+    "mysql2": "^3.14.3",
+    "qrcode": "^1.5.4"
+  }
+}
