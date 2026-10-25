@@ -404,6 +404,13 @@ router.get("/management/users", requireRoles(["system_administrator"]), async (r
   res.json({ users, roles });
 });
 
+router.get("/management/contact-messages", requireRoles(["system_administrator"]), async (req, res) => {
+  const [messages] = await pool.query(
+    "SELECT id, name, email, subject, message, status, created_at AS createdAt FROM contact_messages ORDER BY created_at DESC LIMIT 500",
+  );
+  res.json({ messages });
+});
+
 router.post("/management/contact-messages/:id/status", requireRoles(["system_administrator"]), async (req, res) => {
   const id = isId(req.params.id);
   const status = req.body.status === "reviewed" ? "reviewed" : req.body.status === "new" ? "new" : null;
