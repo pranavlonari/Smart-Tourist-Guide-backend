@@ -275,14 +275,56 @@ router.get("/bookings", requireUser, async (req, res) => {
     `SELECT b.id, b.booking_date AS bookingDate, b.check_out AS checkOut, b.quantity,
             b.guest_count AS guestCount, b.unit_price AS unitPrice,
             b.total_amount AS totalAmount, b.status, b.service_name AS serviceName,
-            b.service_type AS serviceType, d.name AS destinationName,
-            p.transaction_id AS transactionId, p.status AS paymentStatus
+            b.service_type AS serviceType, b.verification_token AS verificationToken,
+            d.name AS destinationName,
+            p.transaction_id AS transactionId, p.payment_mode AS paymentMode, p.status AS paymentStatus
        FROM bookings b JOIN destinations d ON d.id = b.destination_id
        LEFT JOIN payments p ON p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
       WHERE b.tourist_id = ? ORDER BY b.booking_date DESC, b.id DESC`,
     [req.session.user.id],
   );
   res.json({ bookings });
+});
+
+router.get("/bookings/:id", requireUser, async (req, res) => {
+  const bookingId = Number(req.params.id);
+  if (!Number.isSafeInteger(bookingId) || bookingId < 1) return res.status(404).json({ error: "Booking not found" });
+  const [rows] = await pool.execute(
+    `SELECT b.id, b.tourist_id AS touristId, b.booking_date AS bookingDate,
+            b.check_out AS checkOut, b.quantity, b.guest_count AS guestCount,
+            b.unit_price AS unitPrice, b.total_amount AS totalAmount,
+            b.status, b.service_name AS serviceName, b.service_type AS serviceType,
+            b.verification_token AS verificationToken, d.name AS destinationName,
+            t.name AS touristName, t.email AS touristEmail,
+            p.id AS paymentId, p.transaction_id AS transactionId,
+            p.payment_mode AS paymentMode, p.status AS paymentStatus
+       FROM bookings b JOIN destinations d ON d.id = b.destination_id
+       JOIN tourists t ON t.id = b.tourist_id
+       LEFT JOIN payments p ON p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
+      WHERE b.id = ? AND (b.tourist_id = ? OR ? IN ('administrator', 'system_administrator')) LIMIT 1`,
+    [bookingId, req.session.user.id, req.session.user.role || ""],
+  );
+  if (!rows.length) return res.status(404).json({ error: "Booking not found" });
+  res.json({ booking: rows[0] });
+});
+
+router.get("/verify/:token", async (req, res) => {
+  const token = typeof req.params.token === "string" && /^[a-f0-9]{48}$/.test(req.params.token)
+    ? req.params.token : "";
+  const [rows] = token ? await pool.execute(
+    `SELECT b.id, b.booking_date AS bookingDate, b.check_out AS checkOut,
+            b.quantity, b.guest_count AS guestCount, b.total_amount AS totalAmount,
+            b.service_name AS serviceName, b.status AS bookingStatus,
+            d.name AS destinationName, t.name AS touristName,
+            p.transaction_id AS transactionId, p.status AS paymentStatus, p.payment_mode AS paymentMode
+       FROM bookings b JOIN destinations d ON d.id = b.destination_id
+       JOIN tourists t ON t.id = b.tourist_id
+       LEFT JOIN payments p ON p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
+      WHERE b.verification_token = ? LIMIT 1`,
+    [token],
+  ) : [[]];
+  if (!rows.length) return res.status(404).json({ error: "Invalid or expired ticket" });
+  res.json({ verified: true, booking: rows[0] });
 });
 
 router.post("/bookings", requireUser, async (req, res) => {
@@ -305,8 +347,8 @@ router.post("/bookings/:id/payments", requireUser, async (req, res) => {
   const result = await processPayment({
     bookingId: req.params.id,
     touristId: req.session.user.id,
-    mode: body.mode,
-    bankName: body.bankName,
+    mode: body.mode || "upi",
+    bankName: body.bankName || "State Bank of India",
     simulateFailure: body.simulateFailure === true || body.simulateFailure === "true",
   });
   if (result.error) return res.status(result.status || 400).json({ error: result.error });
@@ -318,10 +360,10 @@ router.delete("/bookings/:id", requireUser, async (req, res) => {
   if (!Number.isSafeInteger(bookingId) || bookingId < 1) return res.status(400).json({ error: "That trip isn't available." });
 
   const [result] = await pool.execute(
-    "UPDATE bookings SET status = 'cancelled' WHERE id = ? AND tourist_id = ? AND status = 'pending'",
+    "UPDATE bookings SET status = 'cancelled' WHERE id = ? AND tourist_id = ? AND status IN ('pending', 'confirmed')",
     [bookingId, req.session.user.id],
   );
-  if (!result.affectedRows) return res.status(404).json({ error: "We couldn't find an active planning request for that trip." });
+  if (!result.affectedRows) return res.status(404).json({ error: "We couldn't find an active booking for that trip to cancel." });
   res.status(204).end();
 });
 
