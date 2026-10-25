@@ -367,22 +367,33 @@ router.delete("/bookings/:id", requireUser, async (req, res) => {
   res.status(204).end();
 });
 
-router.post("/reviews", requireUser, async (req, res) => {
+router.post("/contact", async (req, res) => {
   const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
-  const destinationId = Number(body.destinationId);
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const subject = typeof body.subject === "string" ? body.subject.trim() : "";
+  const message = typeof body.message === "string" ? body.message.trim() : "";
+
+  if (name.length < 2 || name.length > 100 || !isValidEmail(email)
+      || subject.length < 2 || subject.length > 150 || message.length < 5 || message.length > 3000) {
+    return res.status(400).json({ error: "Please provide a valid name, email, subject, and message." });
+  }
+
+  await pool.execute(
+    "INSERT INTO contact_messages (name, email, subject, message, status) VALUES (?, ?, ?, ?, 'new')",
+    [name, email, subject, message],
+  );
+  res.status(201).json({ message: "Thank you for getting in touch. Your message has been saved for the site administrator." });
+});
+
+async function handleReviewSubmission(req, res) {
+  const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  const destinationId = Number(req.params.id || body.destinationId);
   const rating = Number(body.rating);
   const comment = typeof body.comment === "string" ? body.comment.trim() : "";
   if (!Number.isSafeInteger(destinationId) || destinationId < 1
       || !isValidRating(rating) || comment.length < 2 || comment.length > 1000) {
     return res.status(400).json({ error: "Please choose a rating and share a comment between 2 and 1,000 characters." });
-  }
-
-  const [eligible] = await pool.execute(
-    "SELECT 1 FROM bookings WHERE tourist_id = ? AND destination_id = ? AND status IN ('confirmed', 'completed') LIMIT 1",
-    [req.session.user.id, destinationId],
-  );
-  if (!eligible.length) {
-    return res.status(403).json({ error: "Share a review after a confirmed trip to this destination." });
   }
 
   try {
@@ -392,18 +403,25 @@ router.post("/reviews", requireUser, async (req, res) => {
     );
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ error: "You've already shared a story about this place. Thank you!" });
-    }
-    if (error.code === "ER_NO_REFERENCED_ROW_2") {
+      await pool.execute(
+        "UPDATE reviews SET rating = ?, comment = ?, verified = 1 WHERE tourist_id = ? AND destination_id = ?",
+        [rating, comment, req.session.user.id, destinationId],
+      );
+    } else if (error.code === "ER_NO_REFERENCED_ROW_2") {
       return res.status(404).json({ error: "We couldn't find that destination." });
+    } else {
+      throw error;
     }
-    throw error;
   }
+
   await pool.execute(
     "UPDATE destinations SET rating = (SELECT COALESCE(AVG(rating), 0) FROM reviews WHERE destination_id = ?) WHERE id = ?",
     [destinationId, destinationId],
   );
   res.status(201).json({ message: "Your story has been shared." });
-});
+}
+
+router.post("/reviews", requireUser, handleReviewSubmission);
+router.post("/destinations/:id/reviews", requireUser, handleReviewSubmission);
 
 module.exports = router;

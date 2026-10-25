@@ -218,7 +218,7 @@ async function processPayment({ bookingId, touristId, mode, bankName, simulateFa
     }
 
     const failed = simulateFailure && mode !== "cash_on_arrival";
-    const paymentStatus = mode === "cash_on_arrival" ? "cash_due" : failed ? "failed" : "success";
+    const paymentStatus = failed ? "failed" : "success";
     const transactionId = `TXN${String(randomInt(0, 100000000)).padStart(8, "0")}`;
     const [result] = await connection.execute(
       `INSERT INTO payments (booking_id, tourist_id, amount, payment_mode, transaction_id, status, bank_name)

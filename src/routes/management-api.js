@@ -332,6 +332,16 @@ async function refundPayment(req, res) {
   }
 }
 
+async function collectPayment(req, res) {
+  const id = isId(req.params.id);
+  if (!id) return res.status(400).json({ error: "Choose a valid payment." });
+  const [result] = await pool.execute("UPDATE payments SET status = 'success' WHERE id = ?", [id]);
+  if (!result.affectedRows) return res.status(404).json({ error: "Payment not found." });
+  res.json({ success: true, message: "Payment marked as collected and paid." });
+}
+
+router.post("/management/payments/:id/collect", requireRoles(administrators), collectPayment);
+router.post("/payments/:id/collect", requireRoles(administrators), collectPayment);
 router.post("/management/payments/:id/refund", requireRoles(administrators), refundPayment);
 router.post("/payments/:id/refund", requireRoles(administrators), refundPayment);
 
