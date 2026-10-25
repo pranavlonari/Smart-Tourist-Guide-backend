@@ -145,4 +145,6 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, ready };
+module.exports = app;
+module.exports.app = app;
+module.exports.ready = ready;
